@@ -350,7 +350,7 @@ export class RateLimitedQueueClient<ItemType = any> {
             await this.#handleMessage<ItemType>(item, queue)
           }
         } else {
-          await Promise.all(items.map((item) => this.#handleMessage<ItemType>(item, queue)))
+          await this.#handleMessages<ItemType>(items, queue)
         }
       }
       this.#working = false
@@ -392,6 +392,33 @@ export class RateLimitedQueueClient<ItemType = any> {
     } catch (error) {
       this.#onHandleMessageError(error, message)
       queue.nack(message, true)
+    }
+  }
+
+  async #handleMessages<ItemType>(messages: Array<QueueMessage>, queue: Queue): Promise<void> {
+    if (!this.#callback) {
+      messages.forEach((message) => queue.nack(message, true))
+      return
+    }
+    const items: Array<ItemType> = []
+    messages.forEach((message) => {
+      let data: ItemType
+      try {
+        data = JSON.parse(message.content.toString()) as ItemType
+        items.push(data)
+      } catch (error) {
+        this.#onHandleMessageError(error, message)
+        queue.nack(message, false)
+      }
+    })
+    try {
+      await this.#dropInstrumentor(this.#callback.bind(null, items))
+      messages.forEach((message) => queue.ack(message))
+    } catch (error) {
+      messages.forEach((message) => {
+        this.#onHandleMessageError(error, message)
+        queue.nack(message, true)
+      })
     }
   }
 }

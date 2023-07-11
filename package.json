@@ -30,7 +30,7 @@
   },
   "homepage": "https://github.com/jakguru/amqplib-oop-ratelimiter#readme",
   "dependencies": {
-    "@jakguru/amqplib-oop": "^1.0.5"
+    "@jakguru/amqplib-oop": "^1.0.6"
   },
   "devDependencies": {
     "@babel/core": "^7.22.8",
