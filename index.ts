@@ -1,12 +1,12 @@
 import type {
-    ConnectionConstructorOptions,
-    ConnectionInstrumentors,
-    InstrumentationHandleFunction,
-    Instrumentor,
-    Queue,
-    QueueAssertionOptions,
-    QueueInstrumentors,
-    QueueMessage,
+  ConnectionConstructorOptions,
+  ConnectionInstrumentors,
+  InstrumentationHandleFunction,
+  Instrumentor,
+  Queue,
+  QueueAssertionOptions,
+  QueueInstrumentors,
+  QueueMessage,
 } from '@jakguru/amqplib-oop'
 import { Connection } from '@jakguru/amqplib-oop'
 
@@ -193,6 +193,7 @@ export class RateLimitedQueueClient<ItemType = any> {
     this.#queue = this.#conn.getQueue(
       name,
       {
+        type: 'basic',
         durable: true,
         autoDelete: false,
       },
