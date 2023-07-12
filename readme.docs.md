@@ -29,28 +29,28 @@ yarn add @jakguru/amqplib-oop-ratelimiter
 ### Import / Require the library
 
 ```typescript
-import { RateLimitedQueueClient } from '@jakguru/amqplib-oop-ratelimiter';
+import { RateLimitedQueueClient } from '@jakguru/amqplib-oop-ratelimiter'
 ```
 
 or
 
 ```typescript
-import RateLimitedQueueClient from '@jakguru/amqplib-oop-ratelimiter';
+import RateLimitedQueueClient from '@jakguru/amqplib-oop-ratelimiter'
 ```
 
 or
 
 ```javascript
-const { RateLimitedQueueClient } = require('@jakguru/amqplib-oop-ratelimiter');
+const { RateLimitedQueueClient } = require('@jakguru/amqplib-oop-ratelimiter')
 ```
 
 ### Create a new instance of the client
 
 ```typescript
 type MyItemType = {
-  id: string;
-  name: string;
-};
+  id: string
+  name: string
+}
 
 const client = new RateLimitedQueueClient<MyItemType>(
   'my-queue',
@@ -58,14 +58,16 @@ const client = new RateLimitedQueueClient<MyItemType>(
     connection: {}, // amqplib connection options
     queue: {
       durable: true,
-    }
+    },
   },
   async (item: MyItemType) => {
     // do something with the item
-  }, {
+  },
+  {
     interval: 1000, // ms
     perInterval: 10,
-  });
+  }
+)
 ```
 
 ### Enqueue Items
@@ -74,6 +76,6 @@ const client = new RateLimitedQueueClient<MyItemType>(
 const item: MyItemType = {
   id: '123',
   name: 'My Item',
-};
-client.enqueue(item);
+}
+client.enqueue(item)
 ```

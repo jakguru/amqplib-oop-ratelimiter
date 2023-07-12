@@ -121,11 +121,13 @@ export class RateLimitedQueueClient<ItemType = any> {
   readonly #onHandleMessageError: RateLimitedQueueInstrumentors['onHandleMessageError']
   readonly #dropInstrumentor: Instrumentor
   readonly #conn: Connection
+  readonly #selfGeneratedConnection: boolean
   #callback?: RateLimitedSpillCallback<ItemType>
   #running: boolean = false
   #working: boolean = false
   #tick?: Promise<void>
   #lastTick: number = 0
+  #isShutDown: boolean = false
 
   /**
    * Creates a new instance of the RateLimitedQueueClient.
@@ -170,14 +172,23 @@ export class RateLimitedQueueClient<ItemType = any> {
       !(connection.connection instanceof Connection)
     ) {
       this.#conn = new Connection(connection.connection, {
-        assertQueue: instrumentors.assertQueue,
-        createChannel: instrumentors.createChannel,
-        eventEmitter: instrumentors.eventEmitter,
-        eventListener: instrumentors.eventListener,
-        getQueue: instrumentors.getQueue,
-        initialization: instrumentors.initialization,
-        shutdown: instrumentors.shutdown,
+        assertQueue: instrumentors.assertQueue ? instrumentors.assertQueue : (handle) => handle(),
+        createChannel: instrumentors.createChannel
+          ? instrumentors.createChannel
+          : (handle) => handle(),
+        eventEmitter: instrumentors.eventEmitter
+          ? instrumentors.eventEmitter
+          : (handle) => handle(),
+        eventListener: instrumentors.eventListener
+          ? instrumentors.eventListener
+          : (handle) => handle(),
+        getQueue: instrumentors.getQueue ? instrumentors.getQueue : (handle) => handle(),
+        initialization: instrumentors.initialization
+          ? instrumentors.initialization
+          : (handle) => handle(),
+        shutdown: instrumentors.shutdown ? instrumentors.shutdown : (handle) => handle(),
       })
+      this.#selfGeneratedConnection = true
     } else if (
       connection &&
       'object' === typeof connection &&
@@ -185,6 +196,7 @@ export class RateLimitedQueueClient<ItemType = any> {
       connection.connection instanceof Connection
     ) {
       this.#conn = connection.connection
+      this.#selfGeneratedConnection = false
     } else {
       throw new Error(
         'you must provide either the configuration for a connection or an already instantiated connection'
@@ -198,28 +210,63 @@ export class RateLimitedQueueClient<ItemType = any> {
         autoDelete: false,
       },
       {
-        preShutDown: instrumentors.preShutDown,
-        shutdown: instrumentors.shutdown,
-        check: instrumentors.check,
-        delete: instrumentors.delete,
-        purge: instrumentors.purge,
-        enqueue: instrumentors.enqueue,
-        ack: instrumentors.ack,
-        nack: instrumentors.nack,
-        get: instrumentors.get,
-        listen: instrumentors.listen,
-        pause: instrumentors.pause,
-        eventListener: instrumentors.eventListener,
-        eventEmitter: instrumentors.eventEmitter,
-        messageListener: instrumentors.messageListener,
-        tick: instrumentors.tick,
-        consumer: instrumentors.consumer,
+        preShutDown: instrumentors.preShutDown ? instrumentors.preShutDown : (handle) => handle(),
+        shutdown: instrumentors.shutdown ? instrumentors.shutdown : (handle) => handle(),
+        check: instrumentors.check ? instrumentors.check : (handle) => handle(),
+        delete: instrumentors.delete ? instrumentors.delete : (handle) => handle(),
+        purge: instrumentors.purge ? instrumentors.purge : (handle) => handle(),
+        enqueue: instrumentors.enqueue ? instrumentors.enqueue : (handle) => handle(),
+        ack: instrumentors.ack ? instrumentors.ack : (handle) => handle(),
+        nack: instrumentors.nack ? instrumentors.nack : (handle) => handle(),
+        get: instrumentors.get ? instrumentors.get : (handle) => handle(),
+        listen: instrumentors.listen ? instrumentors.listen : (handle) => handle(),
+        pause: instrumentors.pause ? instrumentors.pause : (handle) => handle(),
+        eventListener: instrumentors.eventListener
+          ? instrumentors.eventListener
+          : (handle) => handle(),
+        eventEmitter: instrumentors.eventEmitter
+          ? instrumentors.eventEmitter
+          : (handle) => handle(),
+        messageListener: instrumentors.messageListener
+          ? instrumentors.messageListener
+          : (handle) => handle(),
+        tick: instrumentors.tick ? instrumentors.tick : (handle) => handle(),
+        consumer: instrumentors.consumer ? instrumentors.consumer : (handle) => handle(),
       }
     )
+    this.#queue.then((queue) => {
+      queue.$on('deleted', () => {
+        this.#isShutDown = true
+      })
+    })
     this.#callback = callback
     if (this.#config.autostart) {
       this.start()
     }
+  }
+
+  /**
+   * Returns a boolean indicating whether or not the queue is running.
+   * @returns A boolean indicating whether or not the queue is running.
+   */
+  public get running() {
+    return !this.#isShutDown && this.#running
+  }
+
+  /**
+   * Returns a boolean indicating whether or not the queue is currently processing a tick.
+   * @returns A boolean indicating whether or not the queue is currently processing a tick.
+   */
+  public get working() {
+    return !this.#isShutDown && this.#working
+  }
+
+  /**
+   * Returns a boolean indicating whether or not the queue has been shut down.
+   * @returns A boolean indicating whether or not the queue has been shut down.
+   */
+  public get isShutDown() {
+    return this.#isShutDown
   }
 
   /**
@@ -229,6 +276,9 @@ export class RateLimitedQueueClient<ItemType = any> {
    * @returns void
    */
   public setCallback(callback: RateLimitedSpillCallback<ItemType>): void {
+    if (this.#isShutDown) {
+      throw new Error('Queue has been shut down and must be reinitialized')
+    }
     this.#callback = callback
   }
 
@@ -237,6 +287,9 @@ export class RateLimitedQueueClient<ItemType = any> {
    * @returns A Promise that resolves to the total number of jobs in the queue.
    */
   public async getPressure(): Promise<number> {
+    if (this.#isShutDown) {
+      throw new Error('Queue has been shut down and must be reinitialized')
+    }
     const queue = await this.#queue
     const { messageCount } = await queue.check()
     return messageCount
@@ -248,6 +301,9 @@ export class RateLimitedQueueClient<ItemType = any> {
    * @returns A Promise that resolves when the queue has started.
    */
   public async start(): Promise<void> {
+    if (this.#isShutDown) {
+      throw new Error('Queue has been shut down and must be reinitialized')
+    }
     if (!this.#callback) {
       throw new Error('No callback function set')
     }
@@ -267,6 +323,9 @@ export class RateLimitedQueueClient<ItemType = any> {
    * @returns A Promise that resolves when the queue has stopped.
    */
   public async stop(): Promise<void> {
+    if (this.#isShutDown) {
+      return
+    }
     this.#running = false
     if (this.#working) {
       await this.#tick
@@ -279,10 +338,27 @@ export class RateLimitedQueueClient<ItemType = any> {
    * @remarks This will stop the queue and close the Connection connection.
    */
   public async shutdown(): Promise<void> {
+    if (this.#isShutDown) {
+      return
+    }
     await this.stop()
-    const queue = await this.#queue
-    await queue.pause()
-    await this.#conn.close()
+    let queue: Queue | undefined
+    try {
+      queue = await this.#queue
+    } catch {
+      // noop
+    }
+    if (queue) {
+      try {
+        await queue.pause()
+      } catch {
+        // noop
+      }
+    }
+    if (this.#selfGeneratedConnection) {
+      await this.#conn.close()
+    }
+    this.#isShutDown = true
   }
 
   /**
@@ -291,6 +367,9 @@ export class RateLimitedQueueClient<ItemType = any> {
    * @returns A Promise that resolves when the item has been added to the queue.
    */
   public async enqueue(item: ItemType): Promise<boolean> {
+    if (this.#isShutDown) {
+      throw new Error('cannot enqueue item, queue is shut down')
+    }
     const queue = await this.#queue
     return await queue.enqueue(Buffer.from(JSON.stringify(item)), {
       contentType: 'application/json',
@@ -303,6 +382,9 @@ export class RateLimitedQueueClient<ItemType = any> {
    * @returns A Promise that resolves when all items have been added to the queue.
    */
   public async enqueueBulk(items: ItemType[]): Promise<Array<boolean>> {
+    if (this.#isShutDown) {
+      throw new Error('cannot enqueue items, queue is shut down')
+    }
     return Promise.all(items.map((item) => this.enqueue(item)))
   }
 
@@ -314,7 +396,7 @@ export class RateLimitedQueueClient<ItemType = any> {
     const queue = await this.#queue
     const pressure = await this.getPressure()
     // do not start if already working or already stopped
-    if (this.#working || !this.#running || !this.#callback) {
+    if (this.#working || !this.#running || !this.#callback || this.#isShutDown) {
       return
     }
     this.#working = true
