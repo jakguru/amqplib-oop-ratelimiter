@@ -330,6 +330,8 @@ export class RateLimitedQueueClient<ItemType = any> {
     if (this.#working) {
       await this.#tick
     }
+    const queue = await this.#queue
+    await queue.awaitHandlingOfConfirmations()
   }
 
   /**
@@ -350,7 +352,12 @@ export class RateLimitedQueueClient<ItemType = any> {
     }
     if (queue) {
       try {
-        await queue.pause()
+        await queue.awaitHandlingOfConfirmations()
+      } catch {
+        // noop
+      }
+      try {
+        await queue.pause(10000)
       } catch {
         // noop
       }
@@ -437,6 +444,7 @@ export class RateLimitedQueueClient<ItemType = any> {
       }
       this.#working = false
       this.#lastTick = Date.now()
+      await queue.awaitHandlingOfConfirmations()
     }, pressure)
     await this.#tick
     if (this.#running) {

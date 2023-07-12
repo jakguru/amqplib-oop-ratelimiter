@@ -21,7 +21,7 @@ test.group('RateLimitedQueueClient', () => {
     },
   }
   test('enqueue adds item to the queue', async ({ assert }) => {
-    const queue = new RateLimitedQueueClient('test', connection, undefined, {
+    const queue = new RateLimitedQueueClient('rlqc-test', connection, undefined, {
       spillMethod: 'drop',
       autostart: false,
     })
@@ -32,7 +32,7 @@ test.group('RateLimitedQueueClient', () => {
   })
 
   test('enqueueBulk adds multiple items to the queue', async ({ assert }) => {
-    const queue = new RateLimitedQueueClient('test', connection, undefined, {
+    const queue = new RateLimitedQueueClient('rlqc-test', connection, undefined, {
       spillMethod: 'drop',
       autostart: false,
     })
@@ -47,7 +47,7 @@ test.group('RateLimitedQueueClient', () => {
   })
 
   test('stop stops processing the queue', async ({ assert }) => {
-    const queue = new RateLimitedQueueClient('test', connection, undefined, {
+    const queue = new RateLimitedQueueClient('rlqc-test', connection, undefined, {
       spillMethod: 'drop',
       autostart: false,
     })
@@ -57,11 +57,73 @@ test.group('RateLimitedQueueClient', () => {
   })
 
   test('shutdown stops the queue and closes the connection', async ({ assert }) => {
-    const queue = new RateLimitedQueueClient('test', connection, undefined, {
+    const queue = new RateLimitedQueueClient('rlqc-test', connection, undefined, {
       spillMethod: 'drop',
       autostart: false,
     })
     await queue.shutdown()
     assert.isFalse(queue.running)
   })
+
+  test('should be able to consume spilled messages individually', async ({ assert }) => {
+    const queue = new RateLimitedQueueClient('rlqc-test', connection, undefined, {
+      spillMethod: 'drop',
+      autostart: false,
+      perInterval: 10,
+      interval: 100,
+    })
+    const items = new Array(50).fill(undefined).map((_, i) => ({ name: `Test`, age: i }))
+    const results = await queue.enqueueBulk(items)
+    assert.deepEqual(results, Array(50).fill(true))
+    queue.setCallback(async (items) => {
+      assert.equal(items.length, 1)
+      return
+    })
+    await queue.start()
+    let pressure = 0
+    const getPressure = async () => {
+      try {
+        pressure = await queue.getPressure()
+      } catch {
+        pressure = 0
+      }
+    }
+    while (pressure > 0) {
+      await getPressure()
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    await queue.stop()
+    await queue.shutdown()
+  }).timeout(60000)
+
+  test('should be able to consume spilled messages in bulk', async ({ assert }) => {
+    const queue = new RateLimitedQueueClient('rlqc-test', connection, undefined, {
+      spillMethod: 'spill',
+      autostart: false,
+      perInterval: 10,
+      interval: 100,
+    })
+    const items = new Array(50).fill(undefined).map((_, i) => ({ name: `Test`, age: i }))
+    const results = await queue.enqueueBulk(items)
+    assert.deepEqual(results, Array(50).fill(true))
+    queue.setCallback(async (items) => {
+      assert.equal(items.length, 10)
+      return
+    })
+    await queue.start()
+    let pressure = 0
+    const getPressure = async () => {
+      try {
+        pressure = await queue.getPressure()
+      } catch {
+        pressure = 0
+      }
+    }
+    while (pressure > 0) {
+      await getPressure()
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    await queue.stop()
+    await queue.shutdown()
+  }).timeout(60000)
 })
