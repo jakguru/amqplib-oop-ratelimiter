@@ -291,8 +291,12 @@ export class RateLimitedQueueClient<ItemType = any> {
       throw new Error('Queue has been shut down and must be reinitialized')
     }
     const queue = await this.#queue
-    const { messageCount } = await queue.check()
-    return messageCount
+    try {
+      const { messageCount } = await queue.check()
+      return messageCount
+    } catch {
+      return -1
+    }
   }
 
   /**
@@ -407,6 +411,12 @@ export class RateLimitedQueueClient<ItemType = any> {
       return
     }
     this.#working = true
+    if (pressure < 0) {
+      if (this.#running) {
+        setTimeout(this.#onTick.bind(this), this.#config.interval)
+      }
+      return
+    }
     this.#tick = this.#tickInstrumentor(async () => {
       if (!this.#callback) {
         return
