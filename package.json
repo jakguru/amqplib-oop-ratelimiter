@@ -1,6 +1,6 @@
 {
   "name": "@jakguru/amqplib-oop-ratelimiter",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "A rate-limited queue processor for ampqlib",
   "main": "dist/index.js",
   "scripts": {
