@@ -238,6 +238,8 @@ export class RateLimitedQueueClient<ItemType = any> {
       queue.$on('deleted', () => {
         this.#isShutDown = true
       })
+    }).catch(() => {
+      this.#isShutDown = true
     })
     this.#callback = callback
     if (this.#config.autostart) {
