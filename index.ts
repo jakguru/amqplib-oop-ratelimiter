@@ -407,7 +407,15 @@ export class RateLimitedQueueClient<ItemType = any> {
    */
   async #onTick(): Promise<void> {
     const queue = await this.#queue
-    const pressure = await this.getPressure()
+    let pressure
+    try {
+      pressure = await this.getPressure()
+    }
+    catch {
+      this.#working = false
+      this.#running = false
+      return
+    }
     // do not start if already working or already stopped
     if (this.#working || !this.#running || !this.#callback || this.#isShutDown) {
       return
@@ -423,7 +431,7 @@ export class RateLimitedQueueClient<ItemType = any> {
       if (!this.#callback) {
         return
       }
-      // if we've stated too soon, wait until we've waited long enough
+      // if we've started too soon, wait until we've waited long enough
       const now = Date.now()
       if (now - this.#lastTick < this.#config.interval) {
         await this.#wait(this.#config.interval - (now - this.#lastTick))
